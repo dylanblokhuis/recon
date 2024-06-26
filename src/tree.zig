@@ -160,6 +160,10 @@ pub fn createElement(self: *Self, props: ElementProps) Node {
     };
 }
 
+pub fn fmt(self: *Self, comptime format: []const u8, args: anytype) []u8 {
+    return std.fmt.allocPrint(self.arena(), format, args) catch unreachable;
+}
+
 fn renderInner(self: *Self, node: Node) void {
     const path = self.addPath(node.key);
     std.debug.print("{s}\n", .{path});
@@ -169,8 +173,9 @@ fn renderInner(self: *Self, node: Node) void {
             const maybe_children = element.children;
 
             if (maybe_children) |children| {
-                for (children) |child| {
+                for (children, 0..) |child, i| {
                     const path_before = self.current_path.clone(self.arena()) catch unreachable;
+                    _ = self.addPath(std.fmt.allocPrint(self.arena(), "{d}", .{i}) catch unreachable);
                     Self.renderInner(self, child);
                     self.current_path = path_before;
                 }

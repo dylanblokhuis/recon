@@ -10,25 +10,9 @@ pub fn main() !void {
 
     var t = try tree.init(allocator, &state);
 
-    while (true) {
-        t.render(
-            t.createInstance(App{}, .{}),
-        );
-        t.render(
-            t.createInstance(App{}, .{}),
-        );
-        t.render(
-            t.createInstance(App{}, .{}),
-        );
-        t.render(
-            t.createInstance(App{}, .{}),
-        );
-        t.render(
-            t.createInstance(App{}, .{}),
-        );
-
-        std.time.sleep(std.time.ns_per_ms * 1);
-    }
+    t.render(
+        t.createInstance(App{}, .{}),
+    );
 
     try r.spawn(doSomeWork, .{"Hen"});
     try r.spawn(doSomeWork, .{"Henkie"});
@@ -60,6 +44,7 @@ const App = struct {
                 }),
                 t.createText("Hello world!"),
                 t.createInstance(App2{}, .{}),
+                t.createInstance(App2{}, .{}),
                 t.createElement(.{
                     .key = "yooo",
                     .class = "w-100 h-100 bg-blue-500",
@@ -81,13 +66,13 @@ const App2 = struct {
     pub fn render(self: *@This(), t: *tree) tree.Node {
         _ = self; // autofix
         const ref = tree.useRef(u32).init(t, 4);
-        _ = ref; // autofix
+        ref.set(ref.value.* + 1);
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",
             .children = &.{
                 t.createElement(.{
-                    .key = "crazy henkie",
+                    .key = t.fmt("{d}", .{ref.value.*}),
                     .class = "w-100 h-100 bg-blue-500",
                 }),
                 t.createText("Hello world!"),
