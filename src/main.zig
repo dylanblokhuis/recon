@@ -13,6 +13,9 @@ pub fn main() !void {
     t.render(
         t.createInstance(App{}, .{}),
     );
+    t.render(
+        t.createInstance(App{}, .{}),
+    );
 
     try r.spawn(doSomeWork, .{"Hen"});
     try r.spawn(doSomeWork, .{"Henkie"});
@@ -66,7 +69,7 @@ const App2 = struct {
     pub fn render(self: *@This(), t: *tree) tree.Node {
         _ = self; // autofix
         const ref = tree.useRef(u32).init(t, 4);
-        ref.set(ref.value.* + 1);
+        // ref.set(ref.value.* + 1);
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",

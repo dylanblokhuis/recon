@@ -22,15 +22,18 @@ const Instance = struct {
     ptr: *anyopaque,
     hooks: std.ArrayListUnmanaged(Hook),
     render_func_ptr: *const fn (*anyopaque, *Self) Node,
+    is_dirty: bool,
+    parent: ?*Instance,
     // create_ptr: *const fn (std.mem.Allocator) *anyopaque,
     // destroy_ptr: *const fn (std.mem.Allocator, *anyopaque) void,
 };
+pub const Element = struct {
+    class: []const u8,
+    children: ?[]const Node = null,
+};
 
 pub const NodeType = union(enum) {
-    element: struct {
-        class: []const u8,
-        children: ?[]const Node = null,
-    },
+    element: Element,
     text: []const u8,
     instance: Instance,
 };
@@ -87,7 +90,6 @@ const InstanceProps = struct {
     key: []const u8 = "",
 };
 pub fn createInstance(self: *Self, comp: anytype, props: InstanceProps) Node {
-    _ = self; // autofix
     const Wrapper = struct {
         pub fn render(s: *anyopaque, tree: *Self) Node {
             const wrapper: *@TypeOf(comp) = @ptrCast(@alignCast(s));
@@ -112,6 +114,8 @@ pub fn createInstance(self: *Self, comp: anytype, props: InstanceProps) Node {
                 .ptr = @constCast(&comp),
                 .hooks = std.ArrayListUnmanaged(Hook){},
                 .render_func_ptr = @constCast(&Wrapper.render),
+                .is_dirty = true,
+                .parent = self.current_instance,
                 // .create_ptr = @constCast(&Wrapper.create),
                 // .destroy_ptr = @constCast(&Wrapper.destroy),
             },
@@ -200,9 +204,18 @@ pub fn render(self: *Self, root: Node) void {
     renderInner(self, root);
 }
 
+fn markDirty(self: *Self, instance: *Instance) void {
+    _ = self; // autofix
+    instance.is_dirty = true;
+    // if (instance.parent) |parent| {
+    //     Self.markDirty(self, parent);
+    // }
+}
+
 pub fn useRef(comptime T: type) type {
     return struct {
         value: *T,
+        tree: *Self,
 
         pub fn init(tree: *Self, initial_value: T) @This() {
             const current_hook_index = tree.current_hook_index;
@@ -216,16 +229,18 @@ pub fn useRef(comptime T: type) type {
                 break :blk ptr;
             } else blk: {
                 const hook = tree.current_instance.?.hooks.items[current_hook_index];
-                break :blk @as(*T, @ptrCast(@alignCast(hook.ptr)));
+                break :blk @ptrCast(@alignCast(hook.ptr));
             };
 
             return .{
                 .value = ptr,
+                .tree = tree,
             };
         }
 
         pub fn set(this: @This(), new_value: T) void {
             this.value.* = new_value;
+            this.tree.markDirty(this.tree.current_instance.?);
         }
     };
 }
