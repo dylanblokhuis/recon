@@ -8,22 +8,37 @@ pub fn main() !void {
 
     // var state = try tree.createPersistentState(allocator);
 
-    var t = tree.init(allocator);
+    var tree1 = tree.init(allocator);
+    var tree2 = tree.init(allocator);
+    const root1 = tree1.createInstance(App{ .something = 69 }, .{});
+    const root2 = tree2.createInstance(App{ .something = 420 }, .{});
 
-    // t.render(
-    const root = t.createInstance(App{}, .{});
+    var mutations = std.ArrayList(tree.Mutation).init(allocator);
+    try tree.diff(&tree2, &tree1, root1, root2, &mutations);
 
-    tree.print(root, 0);
-
-    // );
-    // t.render(
-    //     t.createInstance(App{}, .{}),
-    // );
-
-    // try r.spawn(doSomeWork, .{"Hen"});
-    // try r.spawn(doSomeWork, .{"Henkie"});
-
-    // try r.run();
+    for (mutations.items) |mutation| {
+        switch (mutation) {
+            .set_class => |sc| {
+                std.log.info("set_class {s}", .{sc.class});
+                tree.print(sc.node, 0);
+            },
+            .remove_child => |rc| {
+                std.log.info("remove_child", .{});
+                tree.print(rc.child, 0);
+            },
+            .append_child => |ac| {
+                std.log.info("append_child", .{});
+                tree.print(ac.child, 0);
+            },
+            .create_element => |ce| {
+                std.log.info("create_element", .{});
+                tree.print(ce.child, 0);
+            },
+            else => {
+                std.log.info("{}", .{mutation});
+            },
+        }
+    }
 }
 
 fn doSomeWork(henkie: []const u8) []const u8 {
@@ -33,16 +48,15 @@ fn doSomeWork(henkie: []const u8) []const u8 {
 }
 
 const App = struct {
+    something: usize,
+
     fn onclick(self: *@This()) void {
         _ = self; // autofix
         std.log.debug("click!", .{});
     }
 
     pub fn render(self: *@This(), t: *tree) *tree.VNode {
-        _ = self; // autofix
         _ = tree.useRef(usize).init(t, 1);
-
-        std.log.debug("rendering! main.App", .{});
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",
@@ -53,18 +67,12 @@ const App = struct {
                 }),
                 t.createText("Hello world!"),
                 t.createInstance(App2{
-                    .something = 50,
+                    .something = self.something,
                 }, .{}),
-                t.createInstance(App2{
-                    .something = 100,
-                }, .{}),
-                t.createElement(.{
-                    .key = "yooo",
-                    .class = "w-100 h-100 bg-blue-500",
-                    .children = &.{
-                        t.createText("Whats up!"),
-                    },
-                }),
+                if (self.something == 69)
+                    t.createInstance(App3{}, .{})
+                else
+                    t.createText("Not 69"),
             },
         });
     }
@@ -81,7 +89,6 @@ const App2 = struct {
     pub fn render(self: *@This(), t: *tree) *tree.VNode {
         // const ref = tree.useRef(u32).init(t, 4);
         // ref.set(ref.value.* + 1);
-        std.log.debug("rendering! main.App2", .{});
         _ = tree.useRef(usize).init(t, 10);
         _ = tree.useRef(usize).init(t, 30);
 
@@ -107,7 +114,6 @@ const App3 = struct {
 
     pub fn render(self: *@This(), t: *tree) *tree.VNode {
         _ = self; // autofix
-        std.log.debug("rendering! main.App3", .{});
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",

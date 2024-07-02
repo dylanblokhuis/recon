@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 
 const State = struct {
     current_component: ?*VNode = null,
+    seen_components: std.StringArrayHashMapUnmanaged(usize) = .{},
     current_hook_index: usize = 0,
 };
 
@@ -27,6 +28,7 @@ pub const Component = struct {
     pub const Hook = struct {
         ptr: *anyopaque,
     };
+    type_name: []const u8,
     parent: ?*VNode,
     // hooks: std.ArrayListUnmanaged(Hook),
 };
@@ -40,6 +42,7 @@ pub const VNode = struct {
     key: []const u8,
     ty: VNodeType,
     //
+    parent: ?*VNode = null,
     first_child: ?*VNode = null,
     next_sibling: ?*VNode = null,
 };
@@ -77,6 +80,7 @@ pub fn createElement(self: *Self, props: ElementProps) *VNode {
         }
 
         for (children) |child_ptr| {
+            child_ptr.parent = parent;
             if (parent.first_child == null) {
                 parent.first_child = child_ptr;
             } else {
@@ -103,16 +107,21 @@ const InstanceProps = struct {
 pub fn generateUniqueId(self: *Self, my_key: []const u8) []const u8 {
     if (self.state.current_component) |current| {
         var key = std.ArrayList(u8).init(self.arena);
-        var maybe_parent = current.ty.component.parent;
-        while (maybe_parent) |parent| {
-            key.appendSlice(parent.key) catch unreachable;
-            // key.append('/') catch unreachable;
-            maybe_parent = parent.ty.component.parent;
-        }
         key.appendSlice(current.key) catch unreachable;
-        // key.append('/') catch unreachable;
-        // key.appendSlice(my_key) catch unreachable;
-        return key.toOwnedSlice() catch unreachable;
+        key.append('/') catch unreachable;
+        key.appendSlice(my_key) catch unreachable;
+
+        const entry = self.state.seen_components.getOrPut(self.arena, key.items) catch unreachable;
+        if (entry.found_existing) {
+            entry.value_ptr.* += 1;
+        } else {
+            entry.value_ptr.* = 0;
+        }
+
+        key.append('/') catch unreachable;
+        key.appendSlice(std.fmt.allocPrint(self.arena, "{d}", .{entry.value_ptr.*}) catch unreachable) catch unreachable;
+
+        return key.items;
     }
 
     return my_key;
@@ -136,28 +145,28 @@ pub fn createInstance(self: *Self, comp: anytype, props: InstanceProps) *VNode {
     // };
     // _ = Wrapper; // autofix
 
-    const this_key = if (props.key.len == 0) @typeName(@TypeOf(comp)) else props.key;
-    const key = self.generateUniqueId(this_key);
-
+    const key = self.generateUniqueId(if (props.key.len == 0) @typeName(@TypeOf(comp)) else props.key);
     const current_parent = self.state.current_component;
 
-    const componentVNode = self.arena.create(VNode) catch unreachable;
-    componentVNode.* = VNode{
+    const component_vnode = self.arena.create(VNode) catch unreachable;
+    component_vnode.* = VNode{
         .key = key,
         .ty = .{
             .component = Component{
+                .type_name = @typeName(@TypeOf(comp)),
                 .parent = current_parent,
             },
         },
         .first_child = null,
     };
 
-    self.state.current_component = componentVNode;
+    self.state.current_component = component_vnode;
     const node = @constCast(&comp).render(self);
+    node.parent = component_vnode;
+    component_vnode.first_child = node;
     self.state.current_component = current_parent;
-    componentVNode.first_child = node;
 
-    return componentVNode;
+    return component_vnode;
 }
 
 pub fn fmt(self: *Self, comptime format: []const u8, args: anytype) []u8 {
@@ -165,11 +174,14 @@ pub fn fmt(self: *Self, comptime format: []const u8, args: anytype) []u8 {
 }
 
 pub fn print(root: *VNode, depth: usize) void {
-    for (0..depth) |i| {
-        _ = i; // autofix
+    for (0..depth) |_| {
         std.debug.print("  ", .{});
     }
-    std.debug.print("{s}\n", .{root.key});
+    if (root.ty == .element) {
+        std.debug.print("{s} {s} {s}\n", .{ root.key, root.ty.element.class, root.ty.element.text });
+    } else {
+        std.debug.print("{s}\n", .{root.key});
+    }
 
     var node: ?*VNode = root.first_child;
     while (node) |item| {
@@ -209,4 +221,139 @@ pub fn useRef(comptime T: type) type {
         //     this.tree.markDirty(this.tree.current_instance.?);
         // }
     };
+}
+
+pub const Mutation = union(enum) {
+    create_element: struct {
+        parent: *VNode,
+        child: *VNode,
+    },
+    remove_child: struct {
+        parent: *VNode,
+        child: *VNode,
+    },
+    append_child: struct {
+        parent: *VNode,
+        child: *VNode,
+    },
+    insert_before: struct {
+        parent: *VNode,
+        child: *VNode,
+        before: *VNode,
+    },
+    set_class: struct {
+        node: *VNode,
+        class: []const u8,
+    },
+    set_text: struct {
+        node: *VNode,
+        text: []const u8,
+    },
+};
+
+pub fn diff(self: *Self, old_self: *Self, old_node: ?*VNode, new_node: ?*VNode, mutations: *std.ArrayList(Mutation)) !void {
+    if (old_node == null and new_node == null) {
+        return;
+    }
+
+    if (old_node == null) {
+        try mutations.append(.{
+            .create_element = .{
+                .parent = new_node.?.parent.?,
+                .child = new_node.?,
+            },
+        });
+        return;
+    }
+
+    if (new_node == null) {
+        std.log.info("{s}", .{old_node.?.key});
+        // remove all old nodes
+        try mutations.append(.{
+            .remove_child = .{
+                .parent = old_node.?.parent.?,
+                .child = old_node.?,
+            },
+        });
+        return;
+    }
+
+    if (!std.mem.eql(u8, old_node.?.key, new_node.?.key)) {
+        // replace the node
+        try mutations.append(.{
+            .remove_child = .{
+                .parent = old_node.?.parent.?,
+                .child = old_node.?,
+            },
+        });
+        try mutations.append(.{
+            .create_element = .{
+                .parent = new_node.?.parent.?,
+                .child = new_node.?,
+            },
+        });
+    }
+
+    if (@intFromEnum(old_node.?.ty) == @intFromEnum(new_node.?.ty)) {
+        switch (old_node.?.ty) {
+            .element => {
+                const old_element = old_node.?.ty.element;
+                const new_element = new_node.?.ty.element;
+
+                if (!std.mem.eql(u8, old_element.class, new_element.class)) {
+                    try mutations.append(.{
+                        .set_class = .{
+                            .node = old_node.?,
+                            .class = new_element.class,
+                        },
+                    });
+                }
+
+                if (!std.mem.eql(u8, old_element.text, new_element.text)) {
+                    try mutations.append(.{
+                        .set_text = .{
+                            .node = old_node.?,
+                            .text = new_element.text,
+                        },
+                    });
+                }
+            },
+            .component => {
+                const old_component = old_node.?.ty.component;
+                const new_component = new_node.?.ty.component;
+                if (!std.mem.eql(u8, old_component.type_name, new_component.type_name)) {
+                    // replace the node
+                    try mutations.append(.{
+                        .remove_child = .{
+                            .parent = old_node.?.parent.?,
+                            .child = old_node.?,
+                        },
+                    });
+                    try mutations.append(.{
+                        .create_element = .{
+                            .parent = new_node.?.parent.?,
+                            .child = new_node.?,
+                        },
+                    });
+                }
+            },
+        }
+    }
+
+    // diff children
+    var old_child: ?*VNode = old_node.?.first_child;
+    var new_child: ?*VNode = new_node.?.first_child;
+    while (old_child != null or new_child != null) {
+        try Self.diff(self, old_self, old_child, new_child, mutations);
+        if (old_child == null) {
+            new_child = new_child.?.next_sibling;
+            continue;
+        }
+        if (new_child == null) {
+            old_child = old_child.?.next_sibling;
+            continue;
+        }
+        old_child = old_child.?.next_sibling;
+        new_child = new_child.?.next_sibling;
+    }
 }
