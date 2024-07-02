@@ -27,19 +27,14 @@ const Instance = struct {
     // create_ptr: *const fn (std.mem.Allocator) *anyopaque,
     // destroy_ptr: *const fn (std.mem.Allocator, *anyopaque) void,
 };
-pub const Element = struct {
-    class: []const u8,
-    children: ?[]const Node = null,
-};
 
-pub const NodeType = union(enum) {
-    element: Element,
-    text: []const u8,
-    instance: Instance,
-};
 pub const Node = struct {
     key: []const u8,
-    ty: NodeType,
+    class: []const u8,
+    text: []const u8,
+    first_child: ?*Node = null,
+    next_sibling: ?*Node = null,
+    // children: ?[]const Node = null,
 };
 
 pub fn createPersistentState(allocator: std.mem.Allocator) !PersistentState {
@@ -105,32 +100,38 @@ pub fn createInstance(self: *Self, comp: anytype, props: InstanceProps) Node {
             allocator.destroy(ptr);
         }
     };
+    _ = Wrapper; // autofix
 
     const key = if (props.key.len == 0) @typeName(@TypeOf(comp)) else props.key;
-    return .{
-        .key = key,
-        .ty = .{
-            .instance = Instance{
-                .ptr = @constCast(&comp),
-                .hooks = std.ArrayListUnmanaged(Hook){},
-                .render_func_ptr = @constCast(&Wrapper.render),
-                .is_dirty = true,
-                .parent = self.current_instance,
-                // .create_ptr = @constCast(&Wrapper.create),
-                // .destroy_ptr = @constCast(&Wrapper.destroy),
-            },
-        },
-    };
+    const node = @constCast(&comp).render(self);
+    std.log.info("{s}", .{key});
+    // const parent = self.current_instance;
+    // self.current_instance = .{
+    //     .hooks = std.ArrayListUnmanaged(Hook){},
+    //     .parent = parent,
+    // };
+
+    return node;
+    // return .{
+    //     .key = key,
+    //     .ty = .{
+    //         .instance = Instance{
+    //             .ptr = @constCast(&comp),
+    //             .hooks = std.ArrayListUnmanaged(Hook){},
+    //             .render_func_ptr = @constCast(&Wrapper.render),
+    //             .is_dirty = true,
+    //             .parent = self.current_instance,
+    //             // .create_ptr = @constCast(&Wrapper.create),
+    //             // .destroy_ptr = @constCast(&Wrapper.destroy),
+    //         },
+    //     },
+    // };
 }
 
 pub fn createText(self: *Self, text: []const u8) Node {
-    _ = self; // autofix
-    return .{
-        .key = text,
-        .ty = .{
-            .text = text,
-        },
-    };
+    return self.createElement(.{
+        .text = text,
+    });
 }
 
 const ElementProps = struct {
@@ -141,67 +142,72 @@ const ElementProps = struct {
 pub fn createElement(self: *Self, props: ElementProps) Node {
     const key = if (props.key.len == 0) "element" else props.key;
 
-    const children: ?[]const Node = if (props.children) |children| blk: {
-        const stable_ptrs = self.arena().alloc(Node, children.len) catch unreachable;
-
-        for (children, 0..) |child, i| {
-            stable_ptrs[i] = child;
-        }
-
-        break :blk stable_ptrs;
-    } else blk: {
-        break :blk null;
-    };
-
-    return .{
+    const parent = self.arena().create(Node) catch unreachable;
+    parent.* = .{
         .key = key,
-        .ty = .{
-            .element = .{
-                .class = props.class,
-                .children = children,
-            },
-        },
+        .class = self.arena().dupe(u8, props.class) catch unreachable,
+        .text = self.arena().dupe(u8, props.text) catch unreachable,
     };
+
+    if (props.children) |children| {
+        for (children) |child_ptr| {
+            if (parent.first_child == null) {
+                parent.first_child = child_ptr;
+            } else {
+                var child = parent.first_child;
+                while (child) |item| {
+                    if (item.next_sibling == null) {
+                        item.next_sibling = child_ptr;
+                        break;
+                    }
+                    child = item.next_sibling;
+                }
+            }
+        }
+    }
+
+    return parent;
 }
 
 pub fn fmt(self: *Self, comptime format: []const u8, args: anytype) []u8 {
     return std.fmt.allocPrint(self.arena(), format, args) catch unreachable;
 }
 
-fn renderInner(self: *Self, node: Node) void {
-    const path = self.addPath(node.key);
-    std.debug.print("{s}\n", .{path});
+// fn renderInner(self: *Self, node: Node) void {
+//     const path = self.addPath(node.key);
+//     std.debug.print("{s}\n", .{path});
 
-    switch (node.ty) {
-        .element => |element| {
-            const maybe_children = element.children;
+//     switch (node.ty) {
+//         .element => |element| {
+//             const maybe_children = element.children;
 
-            if (maybe_children) |children| {
-                for (children, 0..) |child, i| {
-                    const path_before = self.current_path.clone(self.arena()) catch unreachable;
-                    _ = self.addPath(std.fmt.allocPrint(self.arena(), "{d}", .{i}) catch unreachable);
-                    Self.renderInner(self, child);
-                    self.current_path = path_before;
-                }
-            }
-        },
-        .instance => {
-            const instance = self.persistent_state.known_instances.getOrPut(path) catch unreachable;
-            if (!instance.found_existing) {
-                instance.value_ptr.* = node.ty.instance;
-            }
-            self.current_instance = instance.value_ptr;
-            Self.renderInner(self, instance.value_ptr.render_func_ptr(instance.value_ptr.ptr, self));
-        },
-        .text => {},
-    }
-}
+//             if (maybe_children) |children| {
+//                 for (children, 0..) |child, i| {
+//                     const path_before = self.current_path.clone(self.arena()) catch unreachable;
+//                     _ = self.addPath(std.fmt.allocPrint(self.arena(), "{d}", .{i}) catch unreachable);
+//                     Self.renderInner(self, child);
+//                     self.current_path = path_before;
+//                 }
+//             }
+//         },
+//         .instance => {
+//             const instance = self.persistent_state.known_instances.getOrPut(path) catch unreachable;
+//             if (!instance.found_existing) {
+//                 instance.value_ptr.* = node.ty.instance;
+//             }
+//             self.current_instance = instance.value_ptr;
+//             Self.renderInner(self, instance.value_ptr.render_func_ptr(instance.value_ptr.ptr, self));
+//         },
+//         .text => {},
+//     }
+// }
 
 pub fn render(self: *Self, root: Node) void {
     _ = self.arena_allocator.reset(.free_all);
     self.current_path = .{};
 
-    renderInner(self, root);
+    var maybe_first_child = root.first_child;
+    while (maybe_first_child)
 }
 
 fn markDirty(self: *Self, instance: *Instance) void {
