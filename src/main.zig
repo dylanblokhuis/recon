@@ -1,44 +1,98 @@
 const std = @import("std");
 const recon = @import("root.zig");
-const tree = @import("tree2.zig");
+const Tree = @import("tree.zig").Tree;
+const tree = Tree(Instance, Renderer);
+
+const Instance = struct {
+    class: []const u8,
+    text: []const u8,
+};
+const Renderer = struct {
+    const Self = @This();
+
+    gpa: std.mem.Allocator,
+
+    pub fn createInstance(self: *Self, element: tree.Element) *Instance {
+        const instance = self.gpa.create(Instance) catch unreachable;
+        instance.* = .{
+            .class = self.gpa.dupe(u8, element.class) catch unreachable,
+            .text = self.gpa.dupe(u8, element.text) catch unreachable,
+        };
+        std.log.info("createInstance {d}", .{@intFromPtr(instance)});
+        return instance;
+    }
+
+    pub fn appendChild(self: *Self, parent: *Instance, child: *Instance) void {
+        _ = self; // autofix
+        std.log.info("appendChild {d} {d}", .{ @intFromPtr(parent), @intFromPtr(child) });
+    }
+
+    pub fn removeChild(self: *Self, parent: *Instance, child: *Instance) void {
+        _ = self; // autofix
+        std.log.info("removeChild {d} {d}  - parent {s} | child {s}", .{ @intFromPtr(parent), @intFromPtr(child), parent.class, child.class });
+    }
+
+    pub fn insertBefore(self: *Self, parent: *Instance, child: *Instance, before: *Instance) void {
+        _ = self; // autofix
+        std.log.info("insertBefore {d} {d} {d}", .{ @intFromPtr(parent), @intFromPtr(child), @intFromPtr(before) });
+    }
+
+    pub fn updateNode(self: *Self, node: *Instance, element: tree.Element) void {
+        _ = self; // autofix
+        std.log.info("updateNode {d} {any}", .{ @intFromPtr(node), element });
+    }
+};
 
 pub fn main() !void {
     const allocator = std.heap.c_allocator;
     // const r = try recon.init(allocator);
 
     // var state = try tree.createPersistentState(allocator);
+    var renderer = Renderer{
+        .gpa = allocator,
+    };
+    const config = tree.UserConfig{
+        .renderer = &renderer,
+        .create_instance_fn = Renderer.createInstance,
+        .append_child_fn = Renderer.appendChild,
+        .remove_child_fn = Renderer.removeChild,
+        .insert_before_fn = Renderer.insertBefore,
+        .update_node_fn = Renderer.updateNode,
+    };
 
     var tree1 = tree.init(allocator);
     var tree2 = tree.init(allocator);
-    const root1 = tree1.createInstance(App{ .something = 69 }, .{});
-    const root2 = tree2.createInstance(App{ .something = 420 }, .{});
+    const root1 = tree1.createComponent(App{ .something = 69 }, .{});
+    try tree1.diff(&tree2, null, root1, config);
 
-    var mutations = std.ArrayList(tree.Mutation).init(allocator);
-    try tree.diff(&tree2, &tree1, root1, root2, &mutations);
+    const root2 = tree2.createComponent(App{ .something = 420 }, .{});
 
-    for (mutations.items) |mutation| {
-        switch (mutation) {
-            .set_class => |sc| {
-                std.log.info("set_class {s}", .{sc.class});
-                tree.print(sc.node, 0);
-            },
-            .remove_child => |rc| {
-                std.log.info("remove_child", .{});
-                tree.print(rc.child, 0);
-            },
-            .append_child => |ac| {
-                std.log.info("append_child", .{});
-                tree.print(ac.child, 0);
-            },
-            .create_element => |ce| {
-                std.log.info("create_element", .{});
-                tree.print(ce.child, 0);
-            },
-            else => {
-                std.log.info("{}", .{mutation});
-            },
-        }
-    }
+    std.debug.print("\ndiffing tree2\n", .{});
+    try tree2.diff(&tree1, root1, root2, config);
+
+    // for (mutations.items) |mutation| {
+    //     switch (mutation) {
+    //         .set_class => |sc| {
+    //             std.log.info("set_class {s}", .{sc.class});
+    //             tree.print(sc.node, 0);
+    //         },
+    //         .remove_child => |rc| {
+    //             std.log.info("remove_child", .{});
+    //             tree.print(rc.child, 0);
+    //         },
+    //         .append_child => |ac| {
+    //             std.log.info("append_child", .{});
+    //             tree.print(ac.child, 0);
+    //         },
+    //         .create_element => |ce| {
+    //             std.log.info("create_element", .{});
+    //             tree.print(ce.child, 0);
+    //         },
+    //         else => {
+    //             std.log.info("{}", .{mutation});
+    //         },
+    //     }
+    // }
 }
 
 fn doSomeWork(henkie: []const u8) []const u8 {
@@ -66,13 +120,16 @@ const App = struct {
                     .class = "w-100 h-100 bg-blue-500",
                 }),
                 t.createText("Hello world!"),
-                t.createInstance(App2{
+                t.createComponent(App2{
                     .something = self.something,
                 }, .{}),
                 if (self.something == 69)
-                    t.createInstance(App3{}, .{})
+                    t.createComponent(App3{}, .{})
                 else
                     t.createText("Not 69"),
+                t.createElement(.{
+                    .class = "w-dfdfsdfsd h-100 bg-blue-500",
+                }),
             },
         });
     }
@@ -100,7 +157,7 @@ const App2 = struct {
                     .class = "w-100 h-100 bg-blue-500",
                 }),
                 t.createText("Hello world!"),
-                t.createInstance(App3{}, .{}),
+                t.createComponent(App3{}, .{}),
             },
         });
     }
