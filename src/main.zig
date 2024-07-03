@@ -1,7 +1,6 @@
 const std = @import("std");
 const recon = @import("root.zig");
-const Tree = @import("tree.zig").Tree;
-const tree = Tree(Instance, Renderer);
+const VDom = @import("vdom.zig").VDom(Instance, Renderer);
 
 const Instance = struct {
     class: []const u8,
@@ -12,7 +11,7 @@ const Renderer = struct {
 
     gpa: std.mem.Allocator,
 
-    pub fn createInstance(self: *Self, element: tree.Element) *Instance {
+    pub fn createInstance(self: *Self, element: VDom.Element) *Instance {
         const instance = self.gpa.create(Instance) catch unreachable;
         instance.* = .{
             .class = self.gpa.dupe(u8, element.class) catch unreachable,
@@ -37,7 +36,7 @@ const Renderer = struct {
         std.log.info("insertBefore {d} {d} {d}", .{ @intFromPtr(parent), @intFromPtr(child), @intFromPtr(before) });
     }
 
-    pub fn updateNode(self: *Self, node: *Instance, element: tree.Element) void {
+    pub fn updateNode(self: *Self, node: *Instance, element: VDom.Element) void {
         _ = self; // autofix
         std.log.info("updateNode {d} {any}", .{ @intFromPtr(node), element });
     }
@@ -51,7 +50,7 @@ pub fn main() !void {
     var renderer = Renderer{
         .gpa = allocator,
     };
-    const config = tree.UserConfig{
+    const config = VDom.UserConfig{
         .renderer = &renderer,
         .create_instance_fn = Renderer.createInstance,
         .append_child_fn = Renderer.appendChild,
@@ -60,8 +59,8 @@ pub fn main() !void {
         .update_node_fn = Renderer.updateNode,
     };
 
-    var tree1 = tree.init(allocator);
-    var tree2 = tree.init(allocator);
+    var tree1 = VDom.init(allocator);
+    var tree2 = VDom.init(allocator);
     const root1 = tree1.createComponent(App{ .something = 69 }, .{});
     try tree1.diff(&tree2, null, root1, config);
 
@@ -69,30 +68,6 @@ pub fn main() !void {
 
     std.debug.print("\ndiffing tree2\n", .{});
     try tree2.diff(&tree1, root1, root2, config);
-
-    // for (mutations.items) |mutation| {
-    //     switch (mutation) {
-    //         .set_class => |sc| {
-    //             std.log.info("set_class {s}", .{sc.class});
-    //             tree.print(sc.node, 0);
-    //         },
-    //         .remove_child => |rc| {
-    //             std.log.info("remove_child", .{});
-    //             tree.print(rc.child, 0);
-    //         },
-    //         .append_child => |ac| {
-    //             std.log.info("append_child", .{});
-    //             tree.print(ac.child, 0);
-    //         },
-    //         .create_element => |ce| {
-    //             std.log.info("create_element", .{});
-    //             tree.print(ce.child, 0);
-    //         },
-    //         else => {
-    //             std.log.info("{}", .{mutation});
-    //         },
-    //     }
-    // }
 }
 
 fn doSomeWork(henkie: []const u8) []const u8 {
@@ -109,8 +84,8 @@ const App = struct {
         std.log.debug("click!", .{});
     }
 
-    pub fn render(self: *@This(), t: *tree) *tree.VNode {
-        _ = tree.useRef(usize).init(t, 1);
+    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
+        _ = VDom.useRef(usize).init(t, 1);
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",
@@ -143,11 +118,11 @@ const App2 = struct {
         std.log.debug("click!", .{});
     }
 
-    pub fn render(self: *@This(), t: *tree) *tree.VNode {
+    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
         // const ref = tree.useRef(u32).init(t, 4);
         // ref.set(ref.value.* + 1);
-        _ = tree.useRef(usize).init(t, 10);
-        _ = tree.useRef(usize).init(t, 30);
+        _ = VDom.useRef(usize).init(t, 10);
+        _ = VDom.useRef(usize).init(t, 30);
 
         return t.createElement(.{
             .class = t.fmt("w-200 h-200 bg-red-500 {d}", .{self.something}),
@@ -169,7 +144,7 @@ const App3 = struct {
         std.log.debug("click!", .{});
     }
 
-    pub fn render(self: *@This(), t: *tree) *tree.VNode {
+    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
         _ = self; // autofix
 
         return t.createElement(.{

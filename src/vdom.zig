@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn Tree(Instance: type, Renderer: type) type {
+pub fn VDom(Instance: type, Renderer: type) type {
     return struct {
         const Self = @This();
 
