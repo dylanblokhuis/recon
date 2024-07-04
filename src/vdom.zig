@@ -11,15 +11,55 @@ pub fn VDom(Instance: type, Renderer: type) type {
             current_hook_index: usize = 0,
         };
 
+        const ComponentState = struct {
+            pub const Hook = struct {
+                ptr: *anyopaque,
+            };
+
+            hooks: std.ArrayList(Hook),
+        };
+        pub const ComponentMap = struct {
+            gpa: Allocator,
+            map: std.StringArrayHashMap(ComponentState),
+
+            pub fn init(gpa: Allocator) @This() {
+                return @This(){
+                    .gpa = gpa,
+                    .map = std.StringArrayHashMap(ComponentState).init(gpa),
+                };
+            }
+
+            pub fn track(self: *@This(), component_key: []const u8) void {
+                _ = self.map.getOrPutValue(component_key, .{
+                    .hooks = std.ArrayList(ComponentState.Hook).init(self.gpa),
+                }) catch unreachable;
+            }
+
+            pub fn getOrPutHook(self: *@This(), component_key: []const u8, hook_index: usize, T: type, initial_value: T) *T {
+                const entry = self.map.getPtr(component_key).?;
+
+                if (entry.hooks.items.len <= hook_index) {
+                    const ptr = self.gpa.create(T) catch unreachable;
+                    ptr.* = initial_value;
+                    entry.hooks.append(ComponentState.Hook{
+                        .ptr = ptr,
+                    }) catch unreachable;
+                    return ptr;
+                }
+
+                return @ptrCast(@alignCast(entry.hooks.items[hook_index].ptr));
+            }
+        };
+
         arena: Allocator,
         state: State,
-        // component_map: std.StringArrayHashMapUnmanaged(Component),
+        component_map: *ComponentMap,
 
-        pub fn init(arena: Allocator) Self {
+        pub fn init(arena: Allocator, component_map: *ComponentMap) Self {
             return Self{
                 .arena = arena,
                 .state = .{},
-                // .components = .{},
+                .component_map = component_map,
             };
         }
 
@@ -28,12 +68,8 @@ pub fn VDom(Instance: type, Renderer: type) type {
             text: []const u8,
         };
         pub const Component = struct {
-            pub const Hook = struct {
-                ptr: *anyopaque,
-            };
             type_name: []const u8,
             parent: ?*VNode,
-            // hooks: std.ArrayListUnmanaged(Hook),
         };
 
         pub const VNodeType = union(enum) {
@@ -164,6 +200,8 @@ pub fn VDom(Instance: type, Renderer: type) type {
             };
 
             self.state.current_component = component_vnode;
+            self.component_map.track(component_vnode.key);
+            self.state.current_hook_index = 0;
             const node = @constCast(&comp).render(self);
             node.parent = component_vnode;
             component_vnode.first_child = node;
@@ -195,26 +233,16 @@ pub fn VDom(Instance: type, Renderer: type) type {
 
         pub fn useRef(comptime T: type) type {
             return struct {
-                // value: *T,
+                value: *T,
                 tree: *Self,
 
                 pub fn init(tree: *Self, initial_value: T) @This() {
-                    // const current_hook_index = tree.current_hook_index;
-                    std.debug.print("{d}\n", .{initial_value});
-                    // const ptr: *T = if (tree.current_instance.?.hooks.items.len <= current_hook_index) blk: {
-                    //     const ptr = tree.gpa.create(T) catch unreachable;
-                    //     ptr.* = initial_value;
-                    //     tree.current_instance.?.hooks.append(tree.gpa, Hook{
-                    //         .ptr = ptr,
-                    //     }) catch unreachable;
-                    //     break :blk ptr;
-                    // } else blk: {
-                    //     const hook = tree.current_instance.?.hooks.items[current_hook_index];
-                    //     break :blk @ptrCast(@alignCast(hook.ptr));
-                    // };
+                    const component_key = tree.state.current_component.?.key;
+                    const ptr = tree.component_map.getOrPutHook(component_key, tree.state.current_hook_index, T, initial_value);
+                    tree.state.current_hook_index += 1;
 
                     return .{
-                        // .value = ptr,
+                        .value = ptr,
                         .tree = tree,
                     };
                 }

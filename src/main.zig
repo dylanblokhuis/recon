@@ -59,8 +59,10 @@ pub fn main() !void {
         .update_node_fn = Renderer.updateNode,
     };
 
-    var tree1 = VDom.init(allocator);
-    var tree2 = VDom.init(allocator);
+    var map = VDom.ComponentMap.init(allocator);
+
+    var tree1 = VDom.init(allocator, &map);
+    var tree2 = VDom.init(allocator, &map);
     const root1 = tree1.createComponent(App{ .something = 69 }, .{});
     try tree1.diff(&tree2, null, root1, config);
 
@@ -85,14 +87,14 @@ const App = struct {
     }
 
     pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-        _ = VDom.useRef(usize).init(t, 1);
+        const ref = VDom.useRef(usize).init(t, 1);
 
         return t.createElement(.{
             .class = "w-200 h-200 bg-red-500",
             .children = &.{
                 t.createElement(.{
                     .key = "crazy henkie",
-                    .class = "w-100 h-100 bg-blue-500",
+                    .class = t.fmt("w-100 h-100 bg-blue-500 {d}", .{ref.value.*}),
                 }),
                 t.createText("Hello world!"),
                 t.createComponent(App2{
