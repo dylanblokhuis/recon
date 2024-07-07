@@ -335,6 +335,11 @@ pub fn VDom(Instance: type, Renderer: type) type {
                 .component => |_| {
                     try createNewNodeTree(node.first_child.?, config);
                     node.instance = node.first_child.?.instance;
+
+                    // root node doesn't have a parent
+                    if (node.parent) |parent| {
+                        config.append_child_fn(config.renderer, parent.instance.?, node.first_child.?.instance.?);
+                    }
                 },
             }
         }

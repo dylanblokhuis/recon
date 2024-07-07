@@ -27,6 +27,10 @@
             .url = "https://github.com/mitchellh/libxev/archive/1dd3c9015a542757b049f6d33beb8941f57bce1f.tar.gz",
             .hash = "1220b644b45718a869b37bc37bbc476e69922b21090003b38c1b68a7218fc365771a",
         },
+        .yoga = .{
+            .url = "https://github.com/facebook/yoga/archive/dc23284cf77e96f6a2108b5c9a2f4afaaa07a255.tar.gz",
+            .hash = "1220e059c92da9d6e365cddaabd8e85b3948fbde204ff3bf13e10d718b96070360ab",
+        },
     },
     .paths = .{
         "build.zig",

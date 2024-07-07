@@ -22,12 +22,43 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.linkLibC();
+    exe.linkLibCpp();
 
     const xev = b.dependency("xev", .{
         .target = target,
         .optimize = optimize,
     });
     exe.root_module.addImport("xev", xev.module("xev"));
+
+    // yoga
+    const yoga_files = &.{
+        "yoga/YGNodeStyle.cpp",
+        "yoga/YGValue.cpp",
+        "yoga/YGEnums.cpp",
+        "yoga/YGNodeLayout.cpp",
+        "yoga/node/Node.cpp",
+        "yoga/node/LayoutResults.cpp",
+        "yoga/config/Config.cpp",
+        "yoga/debug/Log.cpp",
+        "yoga/debug/AssertFatal.cpp",
+        "yoga/event/event.cpp",
+        "yoga/algorithm/Baseline.cpp",
+        "yoga/algorithm/CalculateLayout.cpp",
+        "yoga/algorithm/AbsoluteLayout.cpp",
+        "yoga/algorithm/Cache.cpp",
+        "yoga/algorithm/FlexLine.cpp",
+        "yoga/algorithm/PixelGrid.cpp",
+        "yoga/YGPixelGrid.cpp",
+        "yoga/YGNode.cpp",
+        "yoga/YGConfig.cpp",
+    };
+
+    const yoga_dep = b.dependency("yoga", .{});
+    exe.addIncludePath(yoga_dep.path(""));
+    const flags = &.{"-std=c++20"};
+    inline for (yoga_files) |file| {
+        exe.addCSourceFile(.{ .file = yoga_dep.path(file), .flags = flags });
+    }
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

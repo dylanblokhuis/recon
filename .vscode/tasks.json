@@ -1,0 +1,46 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // link current file. Uses one or more object.o files
+            "label": "zig build run",
+            "type": "shell",
+            "command": "zig", // call bash
+            "args": [
+                "build",
+                "run",
+                "--prominent-compile-errors",
+                "--summary",
+                "none"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "clear": true
+            }
+        },
+        {
+            // link current file. Uses one or more object.o files
+            "label": "zig build",
+            "type": "shell",
+            "command": "zig", // call bash
+            "args": [
+                "build",
+                "--prominent-compile-errors",
+                "--summary",
+                "none"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "clear": true
+            }
+        }
+    ]
+}
