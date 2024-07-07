@@ -31,6 +31,10 @@
             .url = "https://github.com/facebook/yoga/archive/dc23284cf77e96f6a2108b5c9a2f4afaaa07a255.tar.gz",
             .hash = "1220e059c92da9d6e365cddaabd8e85b3948fbde204ff3bf13e10d718b96070360ab",
         },
+        .raylib = .{
+            .url = "https://github.com/raysan5/raylib/archive/9764fef26260e6fcf671ddffb230360cc1efa1f8.tar.gz",
+            .hash = "122030fd760f612ca204c0c4294b9cb207dd98aef8a859e4967092f44fd0ec187516",
+        },
     },
     .paths = .{
         "build.zig",

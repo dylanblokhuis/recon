@@ -30,6 +30,14 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("xev", xev.module("xev"));
 
+    const raylib = b.dependency("raylib", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    // exe.linkSystemLibrary("raylib");
+    exe.addIncludePath(raylib.path("src"));
+    exe.linkLibrary(raylib.artifact("raylib"));
+
     // yoga
     const yoga_files = &.{
         "yoga/YGNodeStyle.cpp",

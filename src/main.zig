@@ -3,6 +3,7 @@ const recon = @import("root.zig");
 const VDom = @import("vdom.zig").VDom(Instance, Renderer);
 const c = @cImport({
     @cInclude("yoga/Yoga.h");
+    @cInclude("raylib.h");
 });
 
 const Instance = c.struct_YGNode;
@@ -103,9 +104,6 @@ const Renderer = struct {
 
 pub fn main() !void {
     const allocator = std.heap.c_allocator;
-    // const r = try recon.init(allocator);
-
-    // var state = try tree.createPersistentState(allocator);
     var renderer = Renderer{
         .gpa = allocator,
     };
@@ -117,20 +115,38 @@ pub fn main() !void {
         .insert_before_fn = Renderer.insertBefore,
         .update_node_fn = Renderer.updateNode,
     };
-
     var map = VDom.ComponentMap.init(allocator);
 
-    var tree1 = VDom.init(allocator, &map);
-    var tree2 = VDom.init(allocator, &map);
-    const root1 = tree1.createComponent(App{ .something = 420 }, .{});
-    try tree1.diff(&tree2, null, root1, config);
+    c.InitWindow(1440, 900, "recon");
+    c.SetTargetFPS(0);
 
-    const root2 = tree2.createComponent(App{ .something = 69 }, .{});
+    var prev_tree: VDom = VDom.init(allocator, &map);
+    var prev_root: ?*VDom.VNode = null;
+    var prev_arena: ?std.heap.ArenaAllocator = null;
 
-    std.debug.print("\ndiffing tree2\n", .{});
-    try tree2.diff(&tree1, root1, root2, config);
+    while (!c.WindowShouldClose()) {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        var tree = VDom.init(arena.allocator(), &map);
+        const root = tree.createComponent(App{ .something = 420 }, .{});
+        try tree.diff(&prev_tree, prev_root, root, config);
 
-    config.renderer.printTree(root2.instance.?);
+        {
+            c.BeginDrawing();
+            defer c.EndDrawing();
+            c.ClearBackground(c.BLACK);
+
+            const fps = c.GetFPS();
+            const str = try std.fmt.allocPrintZ(arena.allocator(), "FPS: {d}", .{fps});
+            c.DrawText(str, 190, 200, 20, c.WHITE);
+        }
+
+        if (prev_arena) |*prev| {
+            prev.deinit();
+        }
+        prev_root = root;
+        prev_tree = tree;
+        prev_arena = arena;
+    }
 }
 
 fn doSomeWork(henkie: []const u8) []const u8 {
