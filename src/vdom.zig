@@ -275,15 +275,7 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
                 // Update the node based on its type
                 switch (new_node.?.ty) {
                     .element => |new_element| {
-                        var needs_update = false;
-                        // Update the existing element
-                        if (!std.mem.eql(u8, old_node.?.ty.element.class, new_element.class)) {
-                            needs_update = true;
-                        }
-                        if (!std.mem.eql(u8, old_node.?.ty.element.text, new_element.text)) {
-                            needs_update = true;
-                        }
-                        if (needs_update) {
+                        if (new_element.isEql(old_node.?.ty.element) == false) {
                             config.update_node_fn(config.renderer, old_node.?.instance.?, new_element);
                         }
 

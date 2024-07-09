@@ -6,9 +6,41 @@ const c = @cImport({
 });
 
 const Instance = c.struct_YGNode;
-const Element = struct {
-    class: []const u8,
-    text: []const u8 = "",
+const Element = union(enum) {
+    div: struct {
+        class: []const u8,
+        text: []const u8 = "",
+    },
+
+    /// we need to implement clone whenever we go from an arena to a general purpose allocator
+    pub fn clone(self: Element, gpa: std.mem.Allocator) !Element {
+        switch (self) {
+            .div => |div| {
+                return .{
+                    .div = .{
+                        .class = try gpa.dupe(u8, div.class),
+                        .text = try gpa.dupe(u8, div.text),
+                    },
+                };
+            },
+        }
+    }
+
+    /// implement eql here to compare elements in the diffing process
+    pub fn isEql(self: Element, other: Element) bool {
+        if (std.meta.activeTag(self) != std.meta.activeTag(other)) {
+            return false;
+        }
+
+        switch (self) {
+            .div => |div| {
+                return std.mem.eql(u8, div.class, other.div.class) and
+                    std.mem.eql(u8, div.text, other.div.text);
+            },
+        }
+
+        return false;
+    }
 };
 pub const VDom = @import("vdom.zig").VDom(Instance, Renderer, Element);
 
@@ -28,8 +60,10 @@ pub const Dom = struct {
 
     pub inline fn div(self: Self, props: Props) Node {
         return self.vdom.createElement(props.key, .{
-            .class = props.class,
-            .text = props.text,
+            .div = .{
+                .class = props.class,
+                .text = props.text,
+            },
         }, props.children);
     }
 
@@ -93,10 +127,7 @@ const Renderer = struct {
         const ref = c.YGNodeNew();
 
         const data = self.gpa.create(Element) catch unreachable;
-        data.* = .{
-            .class = self.gpa.dupe(u8, element.class) catch unreachable,
-            .text = self.gpa.dupe(u8, element.text) catch unreachable,
-        };
+        data.* = element.clone(self.gpa) catch unreachable;
         c.YGNodeSetContext(ref, data);
         std.log.info("createInstance {d}", .{@intFromPtr(ref)});
         return ref.?;
@@ -157,7 +188,9 @@ const Renderer = struct {
                 }
 
                 const props: *Element = @ptrCast(@alignCast(c.YGNodeGetContext(node).?));
-                std.debug.print("Node {s} {s}\n", .{ props.class, props.text });
+                _ = props; // autofix
+                // std.debug.print("Node {s} {s}\n", .{ props.class, props.text });
+                std.debug.print("Node \n", .{});
 
                 for (0..children) |i| {
                     const child = c.YGNodeGetChild(node, i).?;
@@ -190,7 +223,7 @@ pub fn main() !void {
     };
     var map = VDom.ComponentMap.init(allocator);
 
-    c.InitWindow(1440, 900, "recon");
+    c.InitWindow(1280, 720, "recon");
     c.SetTargetFPS(0);
 
     var prev_tree: VDom = VDom.init(allocator, &map);
@@ -226,58 +259,3 @@ pub fn main() !void {
         prev_arena = arena;
     }
 }
-
-fn doSomeWork(henkie: []const u8) []const u8 {
-    std.log.debug("Doing some work! with {s}", .{henkie});
-    // do some work
-    return "Hello, World!";
-}
-
-// const App2 = struct {
-//     something: usize,
-
-//     fn onclick(self: *@This()) void {
-//         _ = self; // autofix
-//         std.log.debug("click!", .{});
-//     }
-
-//     pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-//         // const ref = tree.useRef(u32).init(t, 4);
-//         // ref.set(ref.value.* + 1);
-//         _ = VDom.useRef(usize).init(t, 10);
-//         _ = VDom.useRef(usize).init(t, 30);
-
-//         return t.createElement(.{
-//             .class = t.fmt("APP2 Baby! w-200 h-200 bg-red-500 {d}", .{self.something}),
-//             .children = &.{
-//                 t.createElement(.{
-//                     // .key = t.fmt("{d}", .{ref.value.*}),
-//                     .class = "w-100 h-100 bg-blue-500",
-//                 }),
-//                 t.createText("Hello world!"),
-//                 t.createComponent(App3{}, .{}),
-//             },
-//         });
-//     }
-// };
-
-// const App3 = struct {
-//     fn onclick(self: *@This()) void {
-//         _ = self; // autofix
-//         std.log.debug("click!", .{});
-//     }
-
-//     pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-//         _ = self; // autofix
-
-//         return t.createElement(.{
-//             .class = "APP3 BABY w-200 h-200 bg-red-500",
-//             .children = &.{
-//                 t.createElement(.{
-//                     .class = "w-100 h-100 bg-blue-500",
-//                 }),
-//                 t.createText("Hello world!"),
-//             },
-//         });
-//     }
-// };
