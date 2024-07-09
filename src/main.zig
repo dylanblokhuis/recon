@@ -49,8 +49,38 @@ pub const Dom = struct {
         return self.vdom.fmt(format, args);
     }
 
-    pub inline fn useRef(self: Self, comptime T: type, value: T) VDom.useRef(T) {
-        return VDom.useRef(T).init(self.vdom, value);
+    pub inline fn useRef(self: Self, comptime T: type, initial_value: T) VDom.useRef(T) {
+        return VDom.useRef(T).init(self.vdom, initial_value);
+    }
+
+    pub fn UseState(
+        comptime T: type,
+    ) type {
+        return struct {
+            ref: VDom.useRef(T),
+
+            pub fn get(self: @This()) T {
+                return self.ref.value.*;
+            }
+
+            pub fn set(self: @This(), value: T) void {
+                self.ref.value.* = value;
+
+                // mark this compoennt and its parents as dirty
+                self.ref.tree.component_map.markDirty(self.ref.tree.state.current_component.?.key);
+                var parent = self.ref.tree.state.current_component.?.parent;
+                while (parent) |p| {
+                    self.ref.tree.component_map.markDirty(p.key);
+                    parent = p.parent;
+                }
+            }
+        };
+    }
+
+    pub fn useState(self: Self, comptime T: type, initial_value: T) UseState(T) {
+        return UseState(T){
+            .ref = self.useRef(T, initial_value),
+        };
     }
 };
 

@@ -11,15 +11,15 @@ pub const App = struct {
 
     pub fn render(self: *@This(), t: Dom) Dom.Node {
         _ = self; // autofix
-        const ref = t.useRef(usize, 1);
+        const ref = t.useState(usize, 1);
 
-        ref.set(ref.value.* + 1);
+        ref.set(ref.get() + 1);
 
         return t.div(.{
             .class = "w-200 h-200 bg-red-500",
             .children = &.{
                 t.div(.{
-                    .class = t.fmt("w-100 h-100 bg-blue-500 {d}", .{ref.value.*}),
+                    .class = t.fmt("w-100 h-100 bg-blue-500 {d}", .{ref.get()}),
                 }),
                 t.comp(App2{ .something = 40 }, .{}),
                 // t.createText("Hello world!"),

@@ -75,10 +75,6 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             };
         }
 
-        // pub const Element = struct {
-        //     class: []const u8,
-        //     text: []const u8,
-        // };
         pub const Component = struct {
             type_name: []const u8,
             parent: ?*VNode,
@@ -106,12 +102,6 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             });
         }
 
-        // const ElementProps = struct {
-        //     key: []const u8 = "",
-        //     text: []const u8 = "",
-        //     class: []const u8 = "",
-        //     children: ?[]const *VNode = null,
-        // };
         pub const Children = ?[]const *VNode;
         pub fn createElement(self: *Self, el_key: []const u8, el: Element, child_nodes: Children) *VNode {
             const key = if (el_key.len == 0) "element" else el_key;
@@ -227,35 +217,21 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             }
         }
 
+        /// a pointer thats stable across renders, aslong as the order of the hooks dont change inbetween renders
         pub fn useRef(comptime T: type) type {
             return struct {
                 value: *T,
                 tree: *Self,
-                index: usize,
 
                 pub fn init(tree: *Self, initial_value: T) @This() {
                     const component_key = tree.state.current_component.?.key;
-                    const index = tree.state.current_hook_index;
-                    const ptr = tree.component_map.getOrPutHook(component_key, index, T, initial_value);
+                    const ptr = tree.component_map.getOrPutHook(component_key, tree.state.current_hook_index, T, initial_value);
                     tree.state.current_hook_index += 1;
 
                     return .{
                         .value = ptr,
                         .tree = tree,
-                        .index = index,
                     };
-                }
-
-                pub fn set(this: @This(), new_value: T) void {
-                    this.value.* = new_value;
-
-                    // mark this compoennt and its parents as dirty
-                    this.tree.component_map.markDirty(this.tree.state.current_component.?.key);
-                    var parent = this.tree.state.current_component.?.parent;
-                    while (parent) |p| {
-                        this.tree.component_map.markDirty(p.key);
-                        parent = p.parent;
-                    }
                 }
             };
         }
