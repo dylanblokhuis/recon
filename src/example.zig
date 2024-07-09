@@ -9,7 +9,7 @@ pub const App = struct {
         std.log.debug("click!", .{});
     }
 
-    pub fn render(self: *@This(), t: *Dom) Dom.Node {
+    pub fn render(self: *@This(), t: Dom) Dom.Node {
         _ = self; // autofix
         const ref = t.useRef(usize, 1);
 

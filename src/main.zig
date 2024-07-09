@@ -14,9 +14,10 @@ pub const VDom = @import("vdom.zig").VDom(Instance, Renderer, Element);
 
 /// wrapper around VDom calls to make it more ergonomic
 pub const Dom = struct {
-    vdom: *VDom,
-
+    const Self = @This();
     pub const Node = *VDom.VNode;
+
+    vdom: *VDom,
 
     const Props = struct {
         key: []const u8 = "",
@@ -25,31 +26,30 @@ pub const Dom = struct {
         children: VDom.Children = null,
     };
 
-    pub inline fn div(self: *Dom, props: Props) *VDom.VNode {
+    pub inline fn div(self: Self, props: Props) Node {
         return self.vdom.createElement(props.key, .{
             .class = props.class,
             .text = props.text,
         }, props.children);
     }
 
-    pub inline fn comp(self: *Dom, comptime component: anytype, props: VDom.ComponentProps) *VDom.VNode {
+    pub inline fn comp(self: Self, comptime component: anytype, props: VDom.ComponentProps) Node {
         const Wrapper = struct {
             outer: *@TypeOf(component),
 
             pub inline fn render(this: *@This(), tree: *VDom) *VDom.VNode {
-                var dom = Dom{ .vdom = tree };
-                return this.outer.render(&dom);
+                return this.outer.render(Dom{ .vdom = tree });
             }
         };
 
         return self.vdom.createComponent(Wrapper{ .outer = @constCast(&component) }, props);
     }
 
-    pub inline fn fmt(self: *Dom, comptime format: []const u8, args: anytype) []u8 {
+    pub inline fn fmt(self: Self, comptime format: []const u8, args: anytype) []u8 {
         return self.vdom.fmt(format, args);
     }
 
-    pub inline fn useRef(self: *Dom, comptime T: type, value: T) VDom.useRef(T) {
+    pub inline fn useRef(self: Self, comptime T: type, value: T) VDom.useRef(T) {
         return VDom.useRef(T).init(self.vdom, value);
     }
 };
@@ -170,7 +170,7 @@ pub fn main() !void {
     while (!c.WindowShouldClose()) {
         var arena = std.heap.ArenaAllocator.init(allocator);
         var tree = VDom.init(arena.allocator(), &map);
-        var dom = Dom{ .vdom = &tree };
+        const dom = Dom{ .vdom = &tree };
         const root = dom.comp(@import("example.zig").App{ .something = 420 }, .{});
         try tree.diff(&prev_tree, prev_root, root, config);
 
