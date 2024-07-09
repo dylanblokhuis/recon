@@ -1,16 +1,59 @@
 const std = @import("std");
 const recon = @import("root.zig");
-const VDom = @import("vdom.zig").VDom(Instance, Renderer);
 const c = @cImport({
     @cInclude("yoga/Yoga.h");
     @cInclude("raylib.h");
 });
 
 const Instance = c.struct_YGNode;
-const InstanceData = struct {
+const Element = struct {
     class: []const u8,
-    text: []const u8,
+    text: []const u8 = "",
 };
+pub const VDom = @import("vdom.zig").VDom(Instance, Renderer, Element);
+
+/// wrapper around VDom calls to make it more ergonomic
+pub const Dom = struct {
+    vdom: *VDom,
+
+    pub const Node = *VDom.VNode;
+
+    const Props = struct {
+        key: []const u8 = "",
+        class: []const u8 = "",
+        text: []const u8 = "",
+        children: VDom.Children = null,
+    };
+
+    pub inline fn div(self: *Dom, props: Props) *VDom.VNode {
+        return self.vdom.createElement(props.key, .{
+            .class = props.class,
+            .text = props.text,
+        }, props.children);
+    }
+
+    pub inline fn comp(self: *Dom, comptime component: anytype, props: VDom.ComponentProps) *VDom.VNode {
+        const Wrapper = struct {
+            outer: *@TypeOf(component),
+
+            pub inline fn render(this: *@This(), tree: *VDom) *VDom.VNode {
+                var dom = Dom{ .vdom = tree };
+                return this.outer.render(&dom);
+            }
+        };
+
+        return self.vdom.createComponent(Wrapper{ .outer = @constCast(&component) }, props);
+    }
+
+    pub inline fn fmt(self: *Dom, comptime format: []const u8, args: anytype) []u8 {
+        return self.vdom.fmt(format, args);
+    }
+
+    pub inline fn useRef(self: *Dom, comptime T: type, value: T) VDom.useRef(T) {
+        return VDom.useRef(T).init(self.vdom, value);
+    }
+};
+
 const Renderer = struct {
     const Self = @This();
 
@@ -19,7 +62,7 @@ const Renderer = struct {
     pub fn createInstance(self: *Self, element: VDom.Element) *Instance {
         const ref = c.YGNodeNew();
 
-        const data = self.gpa.create(InstanceData) catch unreachable;
+        const data = self.gpa.create(Element) catch unreachable;
         data.* = .{
             .class = self.gpa.dupe(u8, element.class) catch unreachable,
             .text = self.gpa.dupe(u8, element.text) catch unreachable,
@@ -45,7 +88,7 @@ const Renderer = struct {
             const node = c.YGNodeGetChild(parent, i).?;
             if (node == child) {
                 c.YGNodeRemoveChild(parent, child);
-                const ptr: *InstanceData = @ptrCast(@alignCast(c.YGNodeGetContext(child)));
+                const ptr: *Element = @ptrCast(@alignCast(c.YGNodeGetContext(child)));
                 self.gpa.destroy(ptr);
                 c.YGNodeFree(child);
                 return;
@@ -83,7 +126,7 @@ const Renderer = struct {
                     std.debug.print("  ", .{});
                 }
 
-                const props: *InstanceData = @ptrCast(@alignCast(c.YGNodeGetContext(node).?));
+                const props: *Element = @ptrCast(@alignCast(c.YGNodeGetContext(node).?));
                 std.debug.print("Node {s} {s}\n", .{ props.class, props.text });
 
                 for (0..children) |i| {
@@ -127,7 +170,8 @@ pub fn main() !void {
     while (!c.WindowShouldClose()) {
         var arena = std.heap.ArenaAllocator.init(allocator);
         var tree = VDom.init(arena.allocator(), &map);
-        const root = tree.createComponent(App{ .something = 420 }, .{});
+        var dom = Dom{ .vdom = &tree };
+        const root = dom.comp(@import("example.zig").App{ .something = 420 }, .{});
         try tree.diff(&prev_tree, prev_root, root, config);
 
         {
@@ -138,6 +182,10 @@ pub fn main() !void {
             const fps = c.GetFPS();
             const str = try std.fmt.allocPrintZ(arena.allocator(), "FPS: {d}", .{fps});
             c.DrawText(str, 190, 200, 20, c.WHITE);
+
+            if (c.IsMouseButtonPressed(c.MOUSE_BUTTON_LEFT)) {
+                renderer.printTree(root.instance.?);
+            }
         }
 
         if (prev_arena) |*prev| {
@@ -155,91 +203,51 @@ fn doSomeWork(henkie: []const u8) []const u8 {
     return "Hello, World!";
 }
 
-const App = struct {
-    something: usize,
+// const App2 = struct {
+//     something: usize,
 
-    fn onclick(self: *@This()) void {
-        _ = self; // autofix
-        std.log.debug("click!", .{});
-    }
+//     fn onclick(self: *@This()) void {
+//         _ = self; // autofix
+//         std.log.debug("click!", .{});
+//     }
 
-    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-        const ref = VDom.useRef(usize).init(t, 1);
+//     pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
+//         // const ref = tree.useRef(u32).init(t, 4);
+//         // ref.set(ref.value.* + 1);
+//         _ = VDom.useRef(usize).init(t, 10);
+//         _ = VDom.useRef(usize).init(t, 30);
 
-        return t.createElement(.{
-            .class = "w-200 h-200 bg-red-500",
-            .children = &.{
-                t.createElement(.{
-                    .key = "crazy henkie",
-                    .class = t.fmt("w-100 h-100 bg-blue-500 {d}", .{ref.value.*}),
-                    .children = &.{
-                        t.createElement(.{
-                            .class = "w-50 h-50 bg-green-500",
-                        }),
-                    },
-                }),
-                t.createText("Hello world!"),
-                t.createComponent(App2{
-                    .something = self.something,
-                }, .{}),
-                t.createText("H2222222222"),
-                if (self.something == 69)
-                    t.createComponent(App3{}, .{})
-                else
-                    t.createText("Not 69"),
-                t.createElement(.{
-                    .class = "w-dfdfsdfsd h-100 bg-blue-500",
-                }),
-            },
-        });
-    }
-};
+//         return t.createElement(.{
+//             .class = t.fmt("APP2 Baby! w-200 h-200 bg-red-500 {d}", .{self.something}),
+//             .children = &.{
+//                 t.createElement(.{
+//                     // .key = t.fmt("{d}", .{ref.value.*}),
+//                     .class = "w-100 h-100 bg-blue-500",
+//                 }),
+//                 t.createText("Hello world!"),
+//                 t.createComponent(App3{}, .{}),
+//             },
+//         });
+//     }
+// };
 
-const App2 = struct {
-    something: usize,
+// const App3 = struct {
+//     fn onclick(self: *@This()) void {
+//         _ = self; // autofix
+//         std.log.debug("click!", .{});
+//     }
 
-    fn onclick(self: *@This()) void {
-        _ = self; // autofix
-        std.log.debug("click!", .{});
-    }
+//     pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
+//         _ = self; // autofix
 
-    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-        // const ref = tree.useRef(u32).init(t, 4);
-        // ref.set(ref.value.* + 1);
-        _ = VDom.useRef(usize).init(t, 10);
-        _ = VDom.useRef(usize).init(t, 30);
-
-        return t.createElement(.{
-            .class = t.fmt("APP2 Baby! w-200 h-200 bg-red-500 {d}", .{self.something}),
-            .children = &.{
-                t.createElement(.{
-                    // .key = t.fmt("{d}", .{ref.value.*}),
-                    .class = "w-100 h-100 bg-blue-500",
-                }),
-                t.createText("Hello world!"),
-                t.createComponent(App3{}, .{}),
-            },
-        });
-    }
-};
-
-const App3 = struct {
-    fn onclick(self: *@This()) void {
-        _ = self; // autofix
-        std.log.debug("click!", .{});
-    }
-
-    pub fn render(self: *@This(), t: *VDom) *VDom.VNode {
-        _ = self; // autofix
-
-        return t.createElement(.{
-            .class = "APP3 BABY w-200 h-200 bg-red-500",
-            .children = &.{
-                t.createElement(.{
-                    .class = "w-100 h-100 bg-blue-500",
-                }),
-                t.createText("Hello world!"),
-            },
-        });
-    }
-};
+//         return t.createElement(.{
+//             .class = "APP3 BABY w-200 h-200 bg-red-500",
+//             .children = &.{
+//                 t.createElement(.{
+//                     .class = "w-100 h-100 bg-blue-500",
+//                 }),
+//                 t.createText("Hello world!"),
+//             },
+//         });
+//     }
+// };

@@ -1,9 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn VDom(Instance: type, Renderer: type) type {
+pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
     return struct {
         const Self = @This();
+
+        pub const Element = ElementT;
 
         const State = struct {
             current_component: ?*VNode = null,
@@ -63,10 +65,10 @@ pub fn VDom(Instance: type, Renderer: type) type {
             };
         }
 
-        pub const Element = struct {
-            class: []const u8,
-            text: []const u8,
-        };
+        // pub const Element = struct {
+        //     class: []const u8,
+        //     text: []const u8,
+        // };
         pub const Component = struct {
             type_name: []const u8,
             parent: ?*VNode,
@@ -94,27 +96,28 @@ pub fn VDom(Instance: type, Renderer: type) type {
             });
         }
 
-        const ElementProps = struct {
-            key: []const u8 = "",
-            text: []const u8 = "",
-            class: []const u8 = "",
-            children: ?[]const *VNode = null,
-        };
-        pub fn createElement(self: *Self, props: ElementProps) *VNode {
-            const key = if (props.key.len == 0) "element" else props.key;
+        // const ElementProps = struct {
+        //     key: []const u8 = "",
+        //     text: []const u8 = "",
+        //     class: []const u8 = "",
+        //     children: ?[]const *VNode = null,
+        // };
+        pub const Children = ?[]const *VNode;
+        pub fn createElement(self: *Self, el_key: []const u8, el: Element, child_nodes: Children) *VNode {
+            const key = if (el_key.len == 0) "element" else el_key;
 
             const parent = self.arena.create(VNode) catch unreachable;
             parent.* = VNode{
                 .key = key,
                 .ty = .{
-                    .element = Element{
-                        .class = self.arena.dupe(u8, props.class) catch unreachable,
-                        .text = self.arena.dupe(u8, props.text) catch unreachable,
-                    },
+                    .element = el,
+                    //     .class = self.arena.dupe(u8, props.class) catch unreachable,
+                    //     .text = self.arena.dupe(u8, props.text) catch unreachable,
+                    // },
                 },
             };
 
-            if (props.children) |stack_children| {
+            if (child_nodes) |stack_children| {
                 const children = self.arena.alloc(*VNode, stack_children.len) catch unreachable;
                 for (0..stack_children.len) |i| {
                     children[i] = stack_children[i];
@@ -163,27 +166,10 @@ pub fn VDom(Instance: type, Renderer: type) type {
 
             return my_key;
         }
-        const ComponentProps = struct {
+        pub const ComponentProps = struct {
             key: []const u8 = "",
         };
-        pub fn createComponent(self: *Self, comp: anytype, props: ComponentProps) *VNode {
-            // const Wrapper = struct {
-            //     pub fn render(s: *anyopaque, tree: *Self) VNode {
-            //         const wrapper: *@TypeOf(comp) = @ptrCast(@alignCast(s));
-            //         return wrapper.render(tree);
-            //     }
-            //     pub fn create(allocator: std.mem.Allocator) *anyopaque {
-            //         const ptr = allocator.create(@TypeOf(comp)) catch unreachable;
-            //         ptr.* = comp;
-            //         return ptr;
-            //     }
-            //     pub fn destroy(allocator: std.mem.Allocator, anyptr: *anyopaque) void {
-            //         const ptr: *@TypeOf(comp) = @ptrCast(@alignCast(anyptr));
-            //         allocator.destroy(ptr);
-            //     }
-            // };
-            // _ = Wrapper; // autofix
-
+        pub fn createComponent(self: *Self, comptime comp: anytype, props: ComponentProps) *VNode {
             const key = self.generateUniqueId(if (props.key.len == 0) @typeName(@TypeOf(comp)) else props.key);
             const current_parent = self.state.current_component;
 
