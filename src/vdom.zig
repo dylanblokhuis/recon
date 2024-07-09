@@ -17,7 +17,7 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             pub const Hook = struct {
                 ptr: *anyopaque,
             };
-
+            dirty: bool,
             hooks: std.ArrayList(Hook),
         };
         pub const ComponentMap = struct {
@@ -33,8 +33,18 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
 
             pub fn track(self: *@This(), component_key: []const u8) void {
                 _ = self.map.getOrPutValue(component_key, .{
+                    .dirty = false,
                     .hooks = std.ArrayList(ComponentState.Hook).init(self.gpa),
                 }) catch unreachable;
+            }
+
+            pub fn getState(self: *@This(), component_key: []const u8) *ComponentState {
+                return self.map.getPtr(component_key).?;
+            }
+
+            pub fn markDirty(self: *@This(), component_key: []const u8) void {
+                const entry = self.map.getPtr(component_key).?;
+                entry.dirty = true;
             }
 
             pub fn getOrPutHook(self: *@This(), component_key: []const u8, hook_index: usize, T: type, initial_value: T) *T {
@@ -221,22 +231,25 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             return struct {
                 value: *T,
                 tree: *Self,
+                index: usize,
 
                 pub fn init(tree: *Self, initial_value: T) @This() {
                     const component_key = tree.state.current_component.?.key;
-                    const ptr = tree.component_map.getOrPutHook(component_key, tree.state.current_hook_index, T, initial_value);
+                    const index = tree.state.current_hook_index;
+                    const ptr = tree.component_map.getOrPutHook(component_key, index, T, initial_value);
                     tree.state.current_hook_index += 1;
 
                     return .{
                         .value = ptr,
                         .tree = tree,
+                        .index = index,
                     };
                 }
 
-                // pub fn set(this: @This(), new_value: T) void {
-                //     this.value.* = new_value;
-                //     this.tree.markDirty(this.tree.current_instance.?);
-                // }
+                pub fn set(this: @This(), new_value: T) void {
+                    this.value.* = new_value;
+                    this.tree.component_map.markDirty(this.tree.state.current_component.?.key);
+                }
             };
         }
 
@@ -297,9 +310,16 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
                         try diffChildren(old_self, old_node.?, new_node.?, config);
                     },
                     .component => |_| {
+                        const state = self.component_map.getState(new_node.?.key);
+                        if (!state.dirty) {
+                            new_node.?.instance = old_node.?.instance;
+                            return;
+                        }
+
                         // Diff the rendered output of the component
                         try diff(self, old_self, old_node.?.first_child, new_node.?.first_child, config);
                         new_node.?.instance = new_node.?.first_child.?.instance;
+                        state.dirty = false;
                     },
                 }
             }
