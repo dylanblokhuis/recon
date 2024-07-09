@@ -13,6 +13,8 @@ pub const App = struct {
         _ = self; // autofix
         const ref = t.useRef(usize, 1);
 
+        ref.set(ref.value.* + 1);
+
         return t.div(.{
             .class = "w-200 h-200 bg-red-500",
             .children = &.{

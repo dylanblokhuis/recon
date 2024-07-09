@@ -248,7 +248,14 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
 
                 pub fn set(this: @This(), new_value: T) void {
                     this.value.* = new_value;
+
+                    // mark this compoennt and its parents as dirty
                     this.tree.component_map.markDirty(this.tree.state.current_component.?.key);
+                    var parent = this.tree.state.current_component.?.parent;
+                    while (parent) |p| {
+                        this.tree.component_map.markDirty(p.key);
+                        parent = p.parent;
+                    }
                 }
             };
         }
