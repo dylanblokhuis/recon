@@ -89,7 +89,7 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
             key: []const u8,
             ty: VNodeType,
             //
-            instance: ?*Instance = null,
+            instance: ?Instance = null,
             parent: ?*VNode = null,
             first_child: ?*VNode = null,
             next_sibling: ?*VNode = null,
@@ -238,11 +238,11 @@ pub fn VDom(Instance: type, Renderer: type, ElementT: type) type {
 
         pub const UserConfig = struct {
             renderer: *Renderer,
-            create_instance_fn: *const fn (self: *Renderer, node: Element) *Instance,
-            append_child_fn: *const fn (self: *Renderer, parent: *Instance, child: *Instance) void,
-            remove_child_fn: *const fn (self: *Renderer, parent: *Instance, child: *Instance) void,
-            insert_before_fn: *const fn (self: *Renderer, parent: *Instance, child: *Instance, before: *Instance) void,
-            update_node_fn: *const fn (self: *Renderer, instance: *Instance, node: Element) void,
+            create_instance_fn: *const fn (self: *Renderer, node: Element) Instance,
+            append_child_fn: *const fn (self: *Renderer, parent: Instance, child: Instance) void,
+            remove_child_fn: *const fn (self: *Renderer, parent: Instance, child: Instance) void,
+            insert_before_fn: *const fn (self: *Renderer, parent: Instance, child: Instance, before: Instance) void,
+            update_node_fn: *const fn (self: *Renderer, instance: Instance, node: Element) void,
         };
 
         pub fn diff(self: *Self, old_self: *Self, old_node: ?*VNode, new_node: ?*VNode, config: UserConfig) !void {
